@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Study Planner — Gemini</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1>Study Planner</h1>
+        <p class="subtitle">Tell me what you want to study — I'll ask questions and use your materials.</p>
+      </div>
+      <div class="status" id="status">Connecting…</div>
+      <button type="button" id="start-game" class="start-game" title="Open Shape Shooter">Start Game →</button>
+    </header>
+
+    <main class="chat" id="chat" aria-live="polite"></main>
+
+    <footer class="composer">
+      <div class="attachments" id="attachments"></div>
+
+      <label class="toggle">
+        <input type="checkbox" id="internet-toggle" />
+        <span>Allow internet as a source</span>
+      </label>
+      <p class="hint" id="internet-hint">Off by default. Turn on only when you want the assistant to search the web.</p>
+
+      <div class="row">
+        <label class="file-btn" title="Upload notes, PDFs, images…">
+          📎 Upload
+          <input type="file" id="file-input" hidden accept=".txt,.md,.pdf,.csv,.json,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.ppt,.pptx" />
+        </label>
+        <textarea id="input" rows="2" placeholder="e.g. I have a biology exam on cell division next week…"></textarea>
+        <button type="button" id="send" class="send">Send</button>
+      </div>
+    </footer>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
