@@ -252,16 +252,15 @@ def test_death_flash_sequence():
     dying = True
     death_flash_timer = 21
     roundactive = True
-    player_died = False
+    revive_active = False
     frames = 0
     while dying and frames < 30:
         death_flash_timer -= 1
         if death_flash_timer <= 0:
-            roundactive = False
-            player_died = True
             dying = False
+            revive_active = True
         frames += 1
-    assert player_died and not roundactive and frames == 21
+    assert revive_active and not dying and roundactive and frames == 21
 
 
 def test_wave_clear_vs_death():

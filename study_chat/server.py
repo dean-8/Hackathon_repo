@@ -17,6 +17,18 @@ from pydantic import BaseModel, Field
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+
+def _clear_localhost_proxy_env() -> None:
+    """IDE/sandbox tools may set a localhost proxy that is not running (causes Errno 61)."""
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
+        val = os.environ.get(var, "")
+        if val and ("127.0.0.1" in val or "localhost" in val):
+            print(f"[GEMINI DEBUG] removing broken proxy env {var}={val}")
+            os.environ.pop(var, None)
+
+
+_clear_localhost_proxy_env()
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -143,6 +155,23 @@ def _sync_study_context(session_id: str | None) -> None:
 
 
 _gemini_client: genai.Client | None = None
+
+GEMINI_UNAVAILABLE_REPLY = (
+    "Gemini is unavailable right now, so fallback questions will be used. "
+    "Your study topic has still been saved for the game."
+)
+
+
+def _reset_gemini_client() -> None:
+    global _gemini_client
+    _gemini_client = None
+
+
+def _chat_fallback_reply(user_message: str) -> str:
+    snippet = user_message.strip()[:160]
+    if snippet:
+        return f"{GEMINI_UNAVAILABLE_REPLY} I noted: \"{snippet}\""
+    return GEMINI_UNAVAILABLE_REPLY
 
 
 def _client() -> genai.Client:
@@ -304,8 +333,8 @@ def _generate_one_revision_question() -> RevisionQuestionResponse:
         repr(study_focus[:80]),
     )
     if not study_context.strip():
-        print("[REVISION DEBUG] no study context — returning 503")
-        raise HTTPException(status_code=503, detail="No study topic context available")
+        print("[GEMINI DEBUG] no study context — using fallback revision question")
+        return _next_fallback_question(set())
 
     turns = (session or {}).get("turns", [])
     conversation = "\n".join(f"{t['role']}: {t['text']}" for t in turns[-16:])
@@ -332,7 +361,7 @@ def _generate_one_revision_question() -> RevisionQuestionResponse:
         '{"question": "...", "options": ["...", "...", "...", "..."], "correct": 0}'
     )
     try:
-        print("[REVISION DEBUG] calling Gemini for revision question")
+        print("[GEMINI DEBUG] calling Gemini for revision question")
         response = _client().models.generate_content(
             model=MODEL,
             contents=[types.Content(role="user", parts=[types.Part.from_text(text=prompt)])],
@@ -344,18 +373,21 @@ def _generate_one_revision_question() -> RevisionQuestionResponse:
         if len(options) != 4 or not (0 <= correct <= 3) or not question:
             raise ValueError("invalid shape")
         _asked_revision_questions.append(question)
-        print("[REVISION DEBUG] source: gemini | question:", repr(question))
+        print("[GEMINI DEBUG] revision question succeeded:", repr(question))
         return RevisionQuestionResponse(
             question=question,
             options=[str(o) for o in options],
             correct=correct,
             source="gemini",
         )
-    except HTTPException:
-        raise
+    except HTTPException as exc:
+        print(f"[GEMINI DEBUG] revision question failed (HTTP): {exc.detail}")
+        _reset_gemini_client()
+        return _next_fallback_question(set())
     except Exception as exc:
-        print(f"[REVISION DEBUG] Gemini failed: {exc}")
-        raise HTTPException(status_code=502, detail=f"Could not generate question: {exc}") from exc
+        print(f"[GEMINI DEBUG] revision question failed: {exc}")
+        _reset_gemini_client()
+        return _next_fallback_question(set())
 
 
 def _next_fallback_question(used_questions: set[str]) -> RevisionQuestionResponse:
@@ -386,10 +418,12 @@ def revision_quiz(count: int = Query(default=5, ge=1, le=10)):
                 raise ValueError("duplicate question in quiz batch")
             used_texts.add(q.question)
             questions.append(q)
-            gemini_count += 1
+            if q.source == "gemini":
+                gemini_count += 1
         except (HTTPException, Exception) as exc:
             detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
-            print(f"[REVISION DEBUG] quiz Q{i + 1} failed ({detail}) — using fallback")
+            print(f"[GEMINI DEBUG] quiz Q{i + 1} failed ({detail}) — using fallback")
+            _reset_gemini_client()
             fb = _next_fallback_question(used_texts)
             questions.append(fb)
 
@@ -433,10 +467,13 @@ async def upload_file(session_id: str = Query(...), file: UploadFile = File(...)
     local_path.write_bytes(raw)
 
     try:
+        print(f"[GEMINI DEBUG] calling Gemini file upload: {safe_name}")
         gemini_file = _client().files.upload(file=str(local_path))
+        print("[GEMINI DEBUG] file upload succeeded")
     except Exception as exc:
-        local_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=502, detail=f"Upload failed: {exc}") from exc
+        print(f"[GEMINI DEBUG] file upload failed: {exc}")
+        _reset_gemini_client()
+        gemini_file = None
 
     _sessions[session_id]["files"][file_id] = {
         "gemini_file": gemini_file,
@@ -449,37 +486,49 @@ async def upload_file(session_id: str = Query(...), file: UploadFile = File(...)
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(body: ChatRequest):
     session = _ensure_session(body.session_id)
-    client = _client()
+    global _study_session_id
+
+    session["turns"].append({"role": "user", "text": body.message})
+    _study_session_id = body.session_id
+    _sync_study_context(body.session_id)
+    print("[GEMINI DEBUG] chat request | context/focus:", repr(body.message[:120]))
 
     user_parts: list = []
     for fid in body.file_ids:
         meta = session["files"].get(fid)
-        if meta:
+        if meta and meta.get("gemini_file"):
             user_parts.append(meta["gemini_file"])
     user_parts.append(types.Part.from_text(text=_internet_prefix(body.allow_internet) + body.message))
 
     contents: list[types.Content] = []
-    for turn in session["turns"]:
+    for turn in session["turns"][:-1]:
         contents.append(types.Content(role=turn["role"], parts=[types.Part(text=turn["text"])]))
-
     contents.append(types.Content(role="user", parts=user_parts))
 
+    reply = None
     try:
-        response = client.models.generate_content(
+        if not GEMINI_API_KEY or GEMINI_API_KEY == "your_key_here":
+            raise RuntimeError("Gemini API key not configured")
+        print("[GEMINI DEBUG] calling Gemini for chat")
+        response = _client().models.generate_content(
             model=MODEL,
             contents=contents,
             config=_gen_config(body.allow_internet),
         )
+        reply = (response.text or "").strip()
+        if not reply:
+            raise ValueError("empty Gemini response")
+        print("[GEMINI DEBUG] chat succeeded")
+    except HTTPException as exc:
+        print(f"[GEMINI DEBUG] chat failed (HTTP): {exc.detail}")
+        _reset_gemini_client()
+        reply = _chat_fallback_reply(body.message)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Gemini error: {exc}") from exc
+        print(f"[GEMINI DEBUG] chat failed: {exc}")
+        _reset_gemini_client()
+        reply = _chat_fallback_reply(body.message)
 
-    reply = (response.text or "").strip() or "I couldn't generate a reply. Try again."
-    session["turns"].append({"role": "user", "text": body.message})
     session["turns"].append({"role": "model", "text": reply})
-    global _study_session_id
-    _study_session_id = body.session_id
-    _sync_study_context(body.session_id)
-
     return ChatResponse(reply=reply, session_id=body.session_id)
 
 

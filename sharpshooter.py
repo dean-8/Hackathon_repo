@@ -255,7 +255,7 @@ def _wrapped_block_height(text, size, max_width, line_gap):
     return len(wrap_text_lines(text, font, max_width)) * line_gap
 
 
-def draw_revision_screen(question, feedback=None, quiz_index=0, quiz_total=5, quiz_score=0, pass_score=4):
+def draw_revision_screen(question, feedback=None, quiz_index=0, quiz_total=5, quiz_score=0, pass_score=4, mode="wave"):
     overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 160))
     dis.blit(overlay, (0, 0))
@@ -263,16 +263,21 @@ def draw_revision_screen(question, feedback=None, quiz_index=0, quiz_total=5, qu
     hint_y = SCREEN_HEIGHT - 40
     max_width = int(SCREEN_WIDTH * 0.85)
 
-    displayMessage("Revision Quiz", [SCREEN_WIDTH / 2, 36], fg, 26, True)
-    displayMessage(f"Question {quiz_index + 1}/{quiz_total}", [SCREEN_WIDTH / 2, 62], (200, 220, 255), 16, True)
-    displayMessage(f"Score: {quiz_score}/{quiz_total}", [SCREEN_WIDTH / 2, 82], (180, 255, 200), 16, True)
+    if mode == "revive":
+        displayMessage("Revive Challenge", [SCREEN_WIDTH / 2, 36], fg, 26, True)
+        displayMessage(f"Streak: {quiz_score}/{quiz_total}", [SCREEN_WIDTH / 2, 62], (180, 255, 200), 18, True)
+        displayMessage("Answer 3 in a row to revive", [SCREEN_WIDTH / 2, 86], (200, 220, 255), 14, True)
+        content_top = 112
+    else:
+        displayMessage("Revision Quiz", [SCREEN_WIDTH / 2, 36], fg, 26, True)
+        displayMessage(f"Question {quiz_index + 1}/{quiz_total}", [SCREEN_WIDTH / 2, 62], (200, 220, 255), 16, True)
+        displayMessage(f"Score: {quiz_score}/{quiz_total}", [SCREEN_WIDTH / 2, 82], (180, 255, 200), 16, True)
+        content_top = 108
 
     if feedback == "fail":
         fail_text = f"You scored {quiz_score}/{quiz_total}. You need {pass_score}/{quiz_total} to pass."
         draw_wrapped_text(fail_text, 220, (255, 120, 120), 20, max_width, "center", 26)
         return
-
-    content_top = 108
 
     q_size, opt_size = 18, 16
     q_gap, opt_gap = q_size + 5, opt_size + 4
@@ -301,7 +306,14 @@ def draw_revision_screen(question, feedback=None, quiz_index=0, quiz_total=5, qu
         y += 6
 
     if feedback == "correct":
-        displayMessage("Correct!", [SCREEN_WIDTH / 2, min(y + 20, hint_y - 50)], (120, 255, 180), 32, True)
+        if mode == "revive":
+            displayMessage(
+                f"Correct! Streak: {quiz_score}/{quiz_total}",
+                [SCREEN_WIDTH / 2, min(y + 20, hint_y - 50)],
+                (120, 255, 180), 32, True,
+            )
+        else:
+            displayMessage("Correct!", [SCREEN_WIDTH / 2, min(y + 20, hint_y - 50)], (120, 255, 180), 32, True)
     elif feedback == "wrong":
         ci = question["correct"]
         wrong_text = f"Wrong — the correct answer was {ci + 1}. {question['options'][ci]}"
@@ -353,6 +365,46 @@ def fetch_revision_quiz(count=5):
         print(f"[REVISION DEBUG] quiz API request failed: {exc}")
     print("[REVISION DEBUG] using 5 FALLBACK questions (hardcoded)")
     return [shuffle_question_options(q.copy(), i + 1) for i, q in enumerate(FALLBACK_REVISIONS)]
+
+
+def push_enemies_away_from_player(min_distance=100):
+    """Move nearby enemies away so revive does not cause instant re-death."""
+    for enemy in enemies:
+        dx = enemy[0] - youX
+        dy = enemy[1] - youY
+        dist = math.sqrt(dx * dx + dy * dy)
+        if dist < min_distance and dist > 0:
+            scale = min_distance / dist
+            enemy[0] = youX + dx * scale
+            enemy[1] = youY + dy * scale
+        elif dist == 0:
+            enemy[0] = youX + min_distance
+            enemy[1] = youY
+
+
+def complete_revive_success():
+    """Return to gameplay after 3/3 revive streak — do not quit or end the run."""
+    global revive_active, revive_streak, revive_question, revive_feedback, revive_feedback_timer
+    global bullets, dying, player_died, invincibility_timer
+    print("REVIVE SUCCESS: returning to gameplay")
+    revive_active = False
+    revive_streak = 0
+    revive_question = None
+    revive_feedback = None
+    revive_feedback_timer = 0
+    dying = False
+    player_died = False
+    bullets = []
+    invincibility_timer = REVIVE_INVINCIBILITY_FRAMES
+    push_enemies_away_from_player()
+
+
+def fetch_revive_question(fallback_index=0):
+    """Fetch one personalised revive question (after death only, not during combat)."""
+    q = fetch_revision_question()
+    if not q:
+        q = FALLBACK_REVISIONS[fallback_index % len(FALLBACK_REVISIONS)].copy()
+    return shuffle_question_options(q)
 
 
 def fetch_revision_question():
@@ -485,6 +537,8 @@ FALLBACK_REVISIONS = [
 ]
 REVISION_QUIZ_TOTAL = 5
 REVISION_QUIZ_PASS = 4
+REVIVE_STREAK_TARGET = 3
+REVIVE_INVINCIBILITY_FRAMES = 120
 REVISION_FEEDBACK_FRAMES = 90
 
 circleinput = []
@@ -513,6 +567,12 @@ revision_quiz_score = 0
 revision_question = None
 revision_feedback = None
 revision_feedback_timer = 0
+revive_active = False
+revive_streak = 0
+revive_question = None
+revive_feedback = None
+revive_feedback_timer = 0
+invincibility_timer = 0
 
 background = (255,255,255)
 
@@ -600,6 +660,12 @@ while True:
             player_died = False
             dying = False
             death_flash_timer = 0
+            revive_active = False
+            revive_streak = 0
+            revive_question = None
+            revive_feedback = None
+            revive_feedback_timer = 0
+            invincibility_timer = 0
             paused = False
             nextText = "Wave " + str(wave)
             youX = 400
@@ -622,11 +688,11 @@ while True:
     if roundactive:
         for event in events:
             if event.type==pygame.KEYDOWN:
-                if event.key==pygame.K_p and not dying:
+                if event.key==pygame.K_p and not dying and not revive_active:
                     paused = not paused
         player_colour = (255, 60, 60) if dying and (death_flash_timer // 3) % 2 == 0 else cubecolour
         displayRect([youX,youY,20,20], player_colour, center=True)
-        if not(paused) and not(dying):
+        if not(paused) and not(dying) and not(revive_active):
             if youX>0:
                 if (held_down[pygame.K_LEFT] or held_down[pygame.K_a]):
                     youX-=Xacc
@@ -678,41 +744,42 @@ while True:
                         play_sound("shoot")
 
         for bullet in bullets[:]:
-            if not(paused) and not(dying):
+            if not(paused) and not(dying) and not(revive_active):
                 bullet["bulletX"] += bullet["velocityX"]
                 bullet["bulletY"] += bullet["velocityY"]
             bullet_radius = 3 + trueUpgrades["Bullet Size"]
             tsbullet = displayCircle([bullet["bulletX"], bullet["bulletY"]], bullet_radius, (255-background[0],255-background[1],255-background[2]))
-            for enemy in enemies[:]:
-                if circles_overlap(bullet["bulletX"], bullet["bulletY"], bullet_radius, enemy[0], enemy[1], enemy_bullet_hit_radius(), ENEMY_HIT_PADDING):
-                    enemies.remove(enemy)
-                    play_sound("hit")
-                    if trueUpgrades["Piercing Bullet"]<1:
+            if not revive_active:
+                for enemy in enemies[:]:
+                    if circles_overlap(bullet["bulletX"], bullet["bulletY"], bullet_radius, enemy[0], enemy[1], enemy_bullet_hit_radius(), ENEMY_HIT_PADDING):
+                        enemies.remove(enemy)
+                        play_sound("hit")
+                        if trueUpgrades["Piercing Bullet"]<1:
+                            bullets.remove(bullet)
+                        break
+                if bullet not in bullets:
+                    continue
+                if trueUpgrades["Ricochet"]==0:
+                    if (bullet["bulletX"]>SCREEN_WIDTH or bullet["bulletX"]<0 or bullet["bulletY"]>SCREEN_HEIGHT or bullet["bulletY"]<0):
                         bullets.remove(bullet)
-                    break
-            if bullet not in bullets:
-                continue
-            if trueUpgrades["Ricochet"]==0:
-                if (bullet["bulletX"]>SCREEN_WIDTH or bullet["bulletX"]<0 or bullet["bulletY"]>SCREEN_HEIGHT or bullet["bulletY"]<0):
-                    bullets.remove(bullet)
-            else:
-                if (bullet["bulletX"]>SCREEN_WIDTH or bullet["bulletX"]<0):
-                    bullet["velocityX"] *= -1
-                    bullet["Bounces"]+=1
-                if (bullet["bulletY"]>SCREEN_HEIGHT or bullet["bulletY"]<0):
-                    bullet["velocityY"] *= -1
-                    bullet["Bounces"]+=1
-                if bullet["Bounces"]>trueUpgrades["Ricochet"]:
-                    bullets.remove(bullet)
+                else:
+                    if (bullet["bulletX"]>SCREEN_WIDTH or bullet["bulletX"]<0):
+                        bullet["velocityX"] *= -1
+                        bullet["Bounces"]+=1
+                    if (bullet["bulletY"]>SCREEN_HEIGHT or bullet["bulletY"]<0):
+                        bullet["velocityY"] *= -1
+                        bullet["Bounces"]+=1
+                    if bullet["Bounces"]>trueUpgrades["Ricochet"]:
+                        bullets.remove(bullet)
             
 
         if cooldown>0:
             draw_reload_bar(cooldown, max_cooldown)
-            if not(paused) and not(dying):
+            if not(paused) and not(dying) and not(revive_active):
                 cooldown-=1
 
 
-        if not paused and not dying:
+        if not paused and not dying and not revive_active:
         #spawning + displaying enemies
             if enemyamount>0:
                 if count%spawnrate==0:
@@ -734,7 +801,7 @@ while True:
                     enemies.append([enemyX,enemyY])
 
         for enemy in enemies:
-            if not(paused) and not(dying):
+            if not(paused) and not(dying) and not(revive_active):
                 distanceX = (youX - enemy[0])
                 distanceY = (youY-enemy[1])
                 distanceT = math.sqrt(distanceX**2 + distanceY**2)
@@ -744,11 +811,11 @@ while True:
                 enemy[0]+=distanceX*enemyspeed
                 enemy[1]+=distanceY*enemyspeed
             tsenemy = displayCircle([enemy[0],enemy[1]],enemysize,(255,0,0))
-            if player_touched_by_enemy(enemy[0], enemy[1]) and not dying:
+            if player_touched_by_enemy(enemy[0], enemy[1]) and not dying and not revive_active and invincibility_timer <= 0:
                 dying = True
                 death_flash_timer = 21
                 play_sound("death")
-        if not dying and len(enemies) == 0 and enemyamount==0 and roundactive:
+        if not dying and not revive_active and len(enemies) == 0 and enemyamount==0 and roundactive:
             roundactive = False
             revision_active = True
             revision_quiz_questions = fetch_revision_quiz(REVISION_QUIZ_TOTAL)
@@ -764,10 +831,15 @@ while True:
             death_flash_timer -= 1
             draw_death_flash(death_flash_timer)
             if death_flash_timer <= 0:
-                roundactive = False
-                player_died = True
                 dying = False
-                nextText = "Try Again"
+                if not revive_active:
+                    revive_active = True
+                    revive_streak = 0
+                    revive_question = fetch_revive_question(0)
+                    revive_feedback = None
+                    revive_feedback_timer = 0
+        elif invincibility_timer > 0:
+            invincibility_timer -= 1
         elif paused:
             draw_overlay("PAUSED", "Press P to resume")
 
@@ -832,7 +904,47 @@ while True:
                 REVISION_QUIZ_PASS,
             )
 
-    if not(roundactive) and not(pregame) and not(revision_active):
+    if revive_active and revive_question:
+        if revive_feedback_timer > 0:
+            revive_feedback_timer -= 1
+            if revive_feedback_timer == 0:
+                if revive_feedback == "correct":
+                    if revive_streak >= REVIVE_STREAK_TARGET:
+                        complete_revive_success()
+                    else:
+                        revive_question = fetch_revive_question(revive_streak)
+                        revive_feedback = None
+                elif revive_feedback == "wrong":
+                    revive_active = False
+                    revive_question = None
+                    revive_feedback = None
+                    roundactive = False
+                    player_died = True
+                    nextText = "Try Again"
+        elif revive_feedback is None:
+            for event in events:
+                if event.type == pygame.KEYDOWN:
+                    choice = revision_answer_index(event.key)
+                    if choice is not None:
+                        if choice == revive_question["correct"]:
+                            revive_streak += 1
+                            revive_feedback = "correct"
+                        else:
+                            revive_feedback = "wrong"
+                        revive_feedback_timer = REVISION_FEEDBACK_FRAMES
+                        break
+        if revive_active and revive_question:
+            draw_revision_screen(
+            revive_question,
+            revive_feedback,
+            0,
+            REVIVE_STREAK_TARGET,
+            revive_streak,
+            REVIVE_STREAK_TARGET,
+            mode="revive",
+        )
+
+    if not(roundactive) and not(pregame) and not(revision_active) and not(revive_active):
            fg = text_on_background()
            panel_bg = panel_colour()
            right_x = UPGRADE_PANEL_WIDTH + 2
@@ -887,6 +999,12 @@ while True:
                player_died = False
                dying = False
                death_flash_timer = 0
+               revive_active = False
+               revive_streak = 0
+               revive_question = None
+               revive_feedback = None
+               revive_feedback_timer = 0
+               invincibility_timer = 0
                paused = False
                youX = 400
                youY = 300

@@ -48,6 +48,11 @@ def _wait_for_game_ready(timeout: float = 3600) -> bool:
 
 def main():
     print("Starting study chat server…")
+    env = os.environ.copy()
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
+        val = env.get(var, "")
+        if val and ("127.0.0.1" in val or "localhost" in val):
+            env.pop(var, None)
     server = subprocess.Popen(
         [
             sys.executable, "-m", "uvicorn",
@@ -57,6 +62,7 @@ def main():
             "--log-level", "warning",
         ],
         cwd=str(ROOT),
+        env=env,
     )
 
     try:
