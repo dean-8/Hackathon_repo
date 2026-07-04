@@ -1,0 +1,556 @@
+import pygame,random,math
+
+
+pygame.init()
+pygame.font.init()
+
+#Checks if the game should be quit
+def checkQuit(events):
+    for event in events:
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            quit()
+            exit
+
+
+def hoverrect(rectx,recty,rectwidth,rectlen,rectcolour,text,textcolour,textsize,mousex,mousey,event1):
+    displayRect([rectx,recty,rectwidth,rectlen],rectcolour,center=True)
+    if (rectx-(0.5*rectwidth))<=mousex<=(rectx+(0.5*rectwidth)) and (recty-(0.5*rectlen))<=mousey<=(recty+(0.5*rectlen)):
+        rectcolour = (255-rectcolour[0],255-rectcolour[1],255-rectcolour[2])
+        textcolour = (255-textcolour[0],255-textcolour[1],255-textcolour[2])
+
+        for event in events:
+            if event.type==pygame.MOUSEBUTTONDOWN:
+                event1 = not(event1)
+    displayRect([rectx,recty,rectwidth,rectlen],rectcolour,center=True), displayMessage(text,[rectx,recty],colour=textcolour,size=textsize,center=True)
+    return event1
+
+def invisirect(rectx,recty,rectwidth,rectlen,rectcolour,text,textcolour,textsize,mousex,mousey,event1,colourchange=(0,0,0)):
+    displayRect([rectx,recty,rectwidth,rectlen],rectcolour,center=True)
+    if (rectx-(0.5*rectwidth))<=mousex<=(rectx+(0.5*rectwidth)) and (recty-(0.5*rectlen))<=mousey<=(recty+(0.5*rectlen)):
+        textcolour = colourchange
+
+        for event in events:
+            if event.type==pygame.MOUSEBUTTONDOWN:
+                event1 = not(event1)
+    displayRect([rectx,recty,rectwidth,rectlen],rectcolour,center=True), displayMessage(text,[rectx,recty],colour=textcolour,size=textsize,center=True)
+    return event1
+#dimensions - e.g. [50,50] - the x and y co-ordinates of the circule you want to draw
+#radius - e.g. 40 - the radius of the circle
+#colour - e.g. "white" - the colour of the circle 
+def displayCircle(dimensions,radius,colour):
+    return pygame.draw.circle(dis,colour,dimensions,radius)
+
+#dimentions - e.g. [0,0,40,40] - The x,y and width,height of the rectangle
+#colour - e.g. "white" - The background colour of the rectangle
+#(optional)center - e.g. True - Whether the recentagle should be centered around the x,y co-ordinates
+def displayRect(dimensions, colour,center=False):
+    location = dimensions[:]
+    if center:
+        location[0] -= location[2]//2
+        location[1] -= location[3]//2
+    return pygame.draw.rect(dis,colour,location)
+
+#msg - e.g. "this is a message" - the message you wish to display
+#loc - e.g. [50,50] - the x and y co-ordinates of the image you want to display
+#(optional)colour - e.g. "white" - the colour of the text
+#(optional)size - e.g. 30 - The size of the text
+#(optional)center - e.g. True - If you want the image to be centered around the location or not
+def displayMessage(msg,loc,colour="black",size=25,center=False):
+    comicSans = pygame.freetype.SysFont('Consolas', size)
+    text_surface,rect = comicSans.render(msg,colour)
+    
+    if center:
+        text_rect = text_surface.get_rect(center=loc)
+        return dis.blit(text_surface,text_rect)
+    else:
+        text_rect = text_surface.get_rect(topleft=loc)
+        return dis.blit(text_surface, text_rect)
+
+#imageSrc - e.g. "Pea.png" - The name of the image inside the images folder
+def loadImage(imageSrc):
+    return pygame.image.load("./images/" + imageSrc)
+
+#imageObj - e.g. img_variable - The value returned from the loadImage() function
+#loc - e.g. [40,50] - the x and y co-ordinates of the image
+#(optional)scale - e.g. 0.5 - how much you want to scale the image by with 1 being original size
+#(optional)center - e.g. False - Centers the sprite around the x and y instead of the top left
+def displayImage(imageVar,loc,scale=1,center=False):
+    size = imageVar.get_size()
+    width = size[0] * scale
+    height = size[1] * scale
+    imp = pygame.transform.scale(imageVar, (width,height))
+    coord = loc[:]
+    if center:
+        coord[
+0] -= width//2 
+        coord[1] -= height//2
+    return dis.blit(imp, coord)
+
+#Initiate pygame
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+dis=pygame.display.set_mode((SCREEN_WIDTH,SCREEN_HEIGHT))
+pygame.display.set_caption("Shape Shooter")
+clock = pygame.time.Clock()
+
+upgrades = {"Max Speed":0,"Acceleration":0,"Reload Rate":0,"Bullet Speed":0,"Piercing Bullet":0,"Bullet Size":0,"Ricochet":0}
+trueUpgrades = {"Max Speed":0,"Acceleration":0,"Reload Rate":0,"Bullet Speed":0,"Piercing Bullet":0,"Bullet Size":0,"Ricochet":0}
+upmaxes = [4,5,6,3,1,4,4]
+
+youX = 400
+youY = 100
+cubecolour = (0,0,0)
+
+Xacc = 0
+Yacc = 0 
+accincrease = 0.2
+
+bullets = []
+bullet_speed = 2
+cooldown = 0
+
+enemies = []
+enemyamount = 10
+enemyspeed = 1
+eneymymax = 10
+spawnrate = 30
+enemysize = 10
+
+circleinput = []
+choosecolour = False
+enterpressed = False
+cubechange = False
+changeback = False
+
+count = 0
+
+pregame = True
+roundactive = False
+
+paused = False
+wave = 1
+credits = 0
+
+background = (255,255,255)
+
+while True:
+    count+=1
+    events = pygame.event.get()
+    held_down=pygame.key.get_pressed()
+    mouse_x,mouse_y = pygame.mouse.get_pos() 
+    checkQuit(events)   
+    dis.fill((background))
+
+    if pregame:
+        displayRect([youX,youY,20,20],(0,0,0),center=True)
+        if youX>0:
+            if (held_down[pygame.K_LEFT] or held_down[pygame.K_a]):
+                youX-=Xacc
+        if youX<800:
+            if (held_down[pygame.K_RIGHT] or held_down[pygame.K_d]):
+                youX+=Xacc
+        if 0<youY:
+            if (held_down[pygame.K_UP] or held_down[pygame.K_w]):
+                youY-=Yacc
+        if youY<600:
+            if (held_down[pygame.K_DOWN] or held_down[pygame.K_s]):
+                youY+=Yacc
+        if (held_down[pygame.K_LEFT] or held_down[pygame.K_a] or held_down[pygame.K_RIGHT] or held_down[pygame.K_d]):
+            if Xacc<5:
+                Xacc+=accincrease
+        else:
+            Xacc=0
+        if held_down[pygame.K_UP] or held_down[pygame.K_w] or held_down[pygame.K_DOWN] or held_down[pygame.K_s]:
+            if Yacc<5:
+                Yacc+=accincrease
+        else:
+            Yacc=0
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if cooldown==0:
+                    cooldown = 60 
+
+                    dx = mouse_x - youX
+                    dy = mouse_y - youY
+                    distance = math.sqrt(dx**2 + dy**2)                
+                    if distance != 0: 
+                        dx = dx / distance
+                        dy = dy / distance
+                    
+                    bullets.append({
+                        "bulletX": youX,
+                        "bulletY": youY,
+                        "velocityX": dx * bullet_speed,
+                        "velocityY": dy * bullet_speed
+                    })
+        for bullet in bullets:
+            bullet["bulletX"] += bullet["velocityX"]
+            bullet["bulletY"] += bullet["velocityY"]
+            tsbullet = displayCircle([bullet["bulletX"], bullet["bulletY"]], 3, (0, 0, 0))
+            for enemy in enemies:
+                if tsbullet.collidepoint(enemy[0],enemy[1]):
+                    if enemy in enemies:
+                        enemies.remove(enemy)
+                    if bullet in bullets:
+                        bullets.remove(bullet)
+            if (bullet["bulletX"]>800 or bullet["bulletX"]<0) and (bullet["bulletY"]>600 or bullet["bulletY"]<0):
+                bullets.remove(bullet)
+        if cooldown>0:
+            displayRect([20,20,(cooldown)*2,10],(255-background[0],255,255-background[2]))
+            cooldown-=1
+
+        pregame = hoverrect(SCREEN_WIDTH/2,SCREEN_HEIGHT/2,100,50,(0,210,150),"START",(110,50,50),25,mouse_x,mouse_y,pregame)
+        if not(pregame):
+            roundactive = True
+            youX = 400
+            youY = 300
+
+            Xacc = 0
+            Yacc = 0 
+            accincrease = 0.2
+
+            bullets = []
+            bullet_speed = 2
+            cooldown = 0
+
+            enemies = []
+            enemyamount = 10
+            enemyspeed = 1
+
+            count = 0
+            events = []
+    if roundactive:
+        for event in events:
+            if event.type==pygame.KEYDOWN:
+                if event.key==pygame.K_p:
+                    paused = True
+                elif paused:
+                    paused = False
+        #movement + defining you
+        displayRect([youX,youY,20,20],(cubecolour),center=True)
+        if not(paused):
+            if youX>0:
+                if (held_down[pygame.K_LEFT] or held_down[pygame.K_a]):
+                    youX-=Xacc
+            if youX<800:
+                if (held_down[pygame.K_RIGHT] or held_down[pygame.K_d]):
+                    youX+=Xacc
+            if 0<youY:
+                if (held_down[pygame.K_UP] or held_down[pygame.K_w]):
+                    youY-=Yacc
+            if youY<600:
+                if (held_down[pygame.K_DOWN] or held_down[pygame.K_s]):
+                    youY+=Yacc
+
+        #acceleration
+            if (held_down[pygame.K_LEFT] or held_down[pygame.K_a] or held_down[pygame.K_RIGHT] or held_down[pygame.K_d]):
+                if Xacc<(5+trueUpgrades["Max Speed"]):
+                    Xacc+=accincrease
+            else:
+                Xacc=0
+            if held_down[pygame.K_UP] or held_down[pygame.K_w] or held_down[pygame.K_DOWN] or held_down[pygame.K_s]:
+                if Yacc<(5+trueUpgrades["Max Speed"]):
+                    Yacc+=accincrease
+            else:
+                Yacc=0
+
+        #shooting
+            for event in events:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if cooldown==0:
+                        cooldown = 60 - (10*trueUpgrades["Reload Rate"])
+
+                        dx = mouse_x - youX
+                        dy = mouse_y - youY
+                        
+                        distance = math.sqrt(dx**2 + dy**2)
+                    
+                        if distance != 0: 
+                            dx = dx / distance
+                            dy = dy / distance
+                        
+                        bullets.append({
+                            "bulletX": youX,
+                            "bulletY": youY,
+                            "velocityX": dx * bullet_speed,
+                            "velocityY": dy * bullet_speed,
+                            "Bounces":0
+                        })
+
+        for bullet in bullets:
+            if not(paused):
+                bullet["bulletX"] += bullet["velocityX"]
+                bullet["bulletY"] += bullet["velocityY"]
+            tsbullet = displayCircle([bullet["bulletX"], bullet["bulletY"]], 3+trueUpgrades["Bullet Size"], (255-background[0],255-background[1],255-background[2]))
+            for enemy in enemies:
+                if tsbullet.collidepoint(enemy[0],enemy[1]):
+                    if enemy in enemies:
+                        enemies.remove(enemy)
+                    if bullet in bullets and trueUpgrades["Piercing Bullet"]<1:
+                        bullets.remove(bullet)
+            if trueUpgrades["Ricochet"]<0:
+                if (bullet["bulletX"]>800 or bullet["bulletX"]<0) and (bullet["bulletY"]>600 or bullet["bulletY"]<0):
+                    bullets.remove(bullet)
+            else:
+                if (bullet["bulletX"]>800 or bullet["bulletX"]<0):
+                    bullet["velocityX"] *= -1
+                    bullet["Bounces"]+=1
+                if (bullet["bulletY"]>600 or bullet["bulletY"]<0):
+                    bullet["velocityY"] *= -1
+                    bullet["Bounces"]+=1
+            if bullet["Bounces"]>trueUpgrades["Ricochet"] and bullet in bullets:
+                bullets.remove(bullet)
+            
+
+        if cooldown>0:
+            displayRect([20,20,(cooldown)*2,10],(255-background[0],255,255-background[2]))
+            if not(paused):
+                cooldown-=1
+
+
+        if not paused:
+        #spawning + displaying enemies
+            if enemyamount>0:
+                if count%spawnrate==0:
+                    enemyamount-=1
+                    inorout = random.randint(0,1)
+                    upordown = random.randint(0,1)
+                    if upordown == 1:
+                        if inorout==0:
+                            enemyX = random.randint(-10,0)
+                        else:
+                            enemyX = random.randint(800,810)
+                        enemyY = random.randint(-10,610)
+                    else:
+                        if inorout==1:
+                            enemyY = random.randint(-10,0)
+                        else:
+                            enemyY =random.randint(600,610)
+                        enemyX = random.randint(-10,810)
+                    enemies.append([enemyX,enemyY])
+
+        for enemy in enemies:
+            if not(paused):
+                distanceX = (youX - enemy[0])
+                distanceY = (youY-enemy[1])
+                distanceT = math.sqrt(distanceX**2 + distanceY**2)
+                if distanceT!=0:
+                    distanceX /= distanceT
+                    distanceY /= distanceT
+                enemy[0]+=distanceX*enemyspeed
+                enemy[1]+=distanceY*enemyspeed
+            tsenemy = displayCircle([enemy[0],enemy[1]],enemysize,(255,0,0))
+            if tsenemy.collidepoint(youX,youY):
+                roundactive = False
+                #for changeupgrade in upgrades:
+                #    trueUpgrades[changeupgrade] = upgrades[changeupgrade]
+                nextText = "Try again"
+        if len(enemies) == 0 and enemyamount==0:
+            if wave>=5:
+                if enemysize>3:
+                    enemysize-=0.5
+            roundactive = False
+            eneymymax+=1
+            wave+=1
+            if enemyspeed<8.8:
+                enemyspeed+=0.1
+            numtotal = 0
+            for num in upmaxes:
+                numtotal+=num
+            if (wave)<=(numtotal+1):
+                credits+=1
+                #for changeupgrade in upgrades:
+                #    trueUpgrades[changeupgrade] = upgrades[changeupgrade]
+            nextText = "Wave " + str(wave)
+        displayMessage("Wave " + str(wave),[SCREEN_WIDTH/2,20],(255-background[0],255-background[1],255-background[2]),size=15,center=True)
+        displayMessage("Enemies: " + str(len(enemies)),[750,20],(255-background[0],255-background[1],255-background[2]),15,True)
+
+    if not(roundactive) and not(pregame):
+           displayCircle([570,300],8,(255-background[0],255-background[1],255-background[2]))
+           changebackground = displayCircle([570,300],7,(background))
+           displayCircle([630,300],8,(255-background[0],255-background[1],255-background[2]))
+           changecube = displayCircle([630,300],7,(cubecolour))
+           counter = 0
+           upgradeselected = False
+           nextround = False
+           numtotal = 0
+           maxout = False
+           for num in upmaxes:
+                numtotal+=num
+           if ((wave)<=(numtotal+1) and credits>0) or credits>0:
+            displayMessage("Upgrade points: " + str(credits),[600,50],(255-background[0],255-background[1],255-background[2]),size=25,center=True)
+           nextround = hoverrect(600,200,200,75,(50,50,175),nextText,(255,255,255),25,mouse_x,mouse_y,nextround)
+           if nextround:
+               roundactive = True
+               nextround = False
+               youX = 400
+               youY = 300
+
+               Xacc = 0
+               Yacc = 0 
+               accincrease = 0.2+(0.2*trueUpgrades["Acceleration"])
+
+               bullets = []
+               bullet_speed = 2 + (2*trueUpgrades["Bullet Speed"])
+               cooldown = 0
+
+               enemies = []
+               enemyamount = eneymymax
+
+               count = 0
+               events = []
+               choosecolour = False
+               changeback = False
+               cubechange = False
+           for tsupgrade in upgrades:
+               tsrect = displayRect([120,(50+75*counter),len(tsupgrade)*13,30],(background),center=True)
+               upgradeselected = invisirect(120,(50+75*counter),len(tsupgrade)*13,30,(background),tsupgrade,(255-background[0],255-background[1],255-background[2]),20,mouse_x,mouse_y,upgradeselected,colourchange=(255,0,0))
+               if upgrades[tsupgrade]>0:
+                maxout = invisirect(20,(50+75*counter),20,30,(background),"max",(255-background[0],255-background[1],255-background[2]),10,mouse_x,mouse_y,maxout,colourchange=(0,255,0))
+               sepcount = 0
+
+               for g in range(upmaxes[counter]):
+                   displayRect([220+(20*sepcount),48+75*counter,15,15],(255-background[0],255-background[1],255-background[2]),center=True)
+                   sepcount+=1
+               sepcount = 0
+               for h in range(trueUpgrades[tsupgrade]):
+                    displayRect([220+(20*sepcount),48+75*counter,13,13],(0,255,0),center=True)
+                    sepcount+=1
+               if upgradeselected:
+                   upgradeselected = False
+                   if tsupgrade!="Ricochet" or (wave-1)>=20:
+                    if (credits-1)>=0 and upgrades[tsupgrade]<upmaxes[counter]:
+                            if tsupgrade == "Ricochet":
+                                trueUpgrades["Piercing Bullet"] = 0
+                                trueUpgrades["Bullet Speed"] = upgrades["Bullet Speed"]
+                                trueUpgrades["Bullet Size"] = 0
+                            if tsupgrade=="Piercing Bullet" or tsupgrade=="Bullet Speed":
+                                trueUpgrades["Ricochet"] = 0
+                            upgrades[tsupgrade]+=1
+                            trueUpgrades[tsupgrade] +=1
+                            credits-=1
+                    else:
+                        if (trueUpgrades[tsupgrade]+1)>upgrades[tsupgrade]:
+                            trueUpgrades[tsupgrade] = 0
+                            if tsupgrade == "Bullet Speed":
+                                trueUpgrades["Ricochet"] = 0
+                        else:
+                            if tsupgrade=="Ricochet":
+                                trueUpgrades["Piercing Bullet"] = 0
+                                trueUpgrades["Bullet Speed"] = upgrades["Bullet Speed"]
+                                trueUpgrades["Bullet Size"] = 0
+                            if tsupgrade=="Piercing Bullet" or tsupgrade=="Bullet Size":
+                                trueUpgrades["Ricochet"] = 0
+                            trueUpgrades[tsupgrade]+=1
+               if maxout:
+                   maxout = False
+                   trueUpgrades[tsupgrade] = upgrades[tsupgrade]
+               if tsupgrade=="Ricochet":
+                   if tsrect.collidepoint(mouse_x,mouse_y) and (wave-1)<20:
+                        displayMessage("Unavailable until level 20",[400,500],(255-background[0],255-background[1],255-background[2]),size=15,center=True)
+
+               counter+=1
+           if changebackground.collidepoint(mouse_x,mouse_y) and (not(cubechange) and not(changeback)):
+              displayMessage("Change Background Colour",[600,450],(255-background[0],255-background[1],255-background[2]),size=15,center=True)
+           if changecube.collidepoint(mouse_x,mouse_y) and (not(cubechange) and not(changeback)):
+              displayMessage("Change Cube Colour",[600,450],(255-background[0],255-background[1],255-background[2]),size=15,center=True)
+           for event in events:
+                if event.type==pygame.MOUSEBUTTONDOWN:
+                    if changebackground.collidepoint(mouse_x,mouse_y):
+                        choosecolour = True
+                        changeback = True
+                        letsprint = ""
+                    if changecube.collidepoint(mouse_x,mouse_y):
+                        choosecolour = True
+                        cubechange = True
+                        letsprint = ""
+           if choosecolour:
+                    displayMessage("type in 3 sets of 3 digit numbers",[600,400],(255-background[0],255-background[1],255-background[2]),size=10,center=True)
+                    displayMessage("to choose new colour in rgb format,",[600,415],(255-background[0],255-background[1],255-background[2]),size=10,center=True)
+                    displayMessage("each number <255, e.g 067, and press enter to confirm",[600,430],(255-background[0],255-background[1],255-background[2]),size=10,center=True)
+                    displayMessage
+                    for printing in range(len(circleinput)):
+                        if printing==0:
+                            letsprint+="("
+                        elif printing%3==0:
+                            letsprint+=","
+                        if printing==8:
+                            letsprint+=str(circleinput[printing])
+                            letsprint+=")"
+                        else:
+                            letsprint+=str(circleinput[printing])
+                    if cubechange:
+                        displayMessage("new cube colour " + letsprint,[600,450],(255-background[0],255-background[1],255-background[2]),size=15,center=True)
+                    else:
+                        displayMessage("new background colour " + letsprint,[600,450],(255-background[0],255-background[1],255-background[2]),size=15,center=True)
+                    letsprint = ""
+                    for event in events:
+                        if event.type==pygame.KEYDOWN:
+                            if event.key == pygame.K_0:
+                                circleinput.append("0")
+                            elif event.key == pygame.K_1:
+                                circleinput.append("1")
+                            elif event.key == pygame.K_2:
+                                circleinput.append("2")
+                            elif event.key == pygame.K_3:
+                                circleinput.append("3")
+                            elif event.key == pygame.K_4:
+                                circleinput.append("4")
+                            elif event.key == pygame.K_5:
+                                    circleinput.append("5")
+                            elif event.key == pygame.K_6:
+                                    circleinput.append("6")
+                            elif event.key == pygame.K_7:
+                                    circleinput.append("7")
+                            elif event.key == pygame.K_8:
+                                    circleinput.append("8")
+                            elif event.key == pygame.K_9:
+                                    circleinput.append("9")
+                            elif event.key==pygame.K_RETURN:
+                                    if len(circleinput)==9 or len(circleinput)==0:
+                                        enterpressed=True
+                            elif event.key ==pygame.K_BACKSPACE:
+                                if len(circleinput)!=0:
+                                    circleinput.pop()
+                            if len(circleinput)%3==0:
+                                checksize = ""
+                                for checknum in range(len(circleinput)):
+                                    checksize+=str(circleinput[checknum])
+                                    if (checknum+1)%3==0:
+                                        if int(checksize)>255:
+                                            for x in range(3):
+                                                circleinput.pop()
+                                        checksize = ""
+                            if len(circleinput)>9:
+                                circleinput.pop()
+
+                    if enterpressed:
+                        if len(circleinput)!=0:
+                            newkull = [000,000,000]
+                            kullcount = 0
+                            singlenum = ""
+                            for xc in range(9):
+                                singlenum+=circleinput[xc]
+                                if (xc+1)%3==0:
+                                    newkull[kullcount] = int(singlenum)
+                                    kullcount+=1
+                                    singlenum = ""
+                            
+                            yourcolour = tuple(newkull)
+                        enterpressed=False
+                        choosecolour=False
+                        if changeback and yourcolour!=cubecolour and yourcolour!=(255,000,000):
+                            background = yourcolour
+                        if cubechange and yourcolour!=background:
+                            cubecolour = yourcolour
+                        changeback = False
+                        cubechange = False
+                        circleinput=[]
+                        letsprint=""
+               
+
+
+    clock.tick(30) #How many frames happen per second i.e. how often the code above is run per second   
+    pygame.display.update() #Updates the screen
+pygame.quit()
