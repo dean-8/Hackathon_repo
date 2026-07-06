@@ -128,7 +128,7 @@ If it prints your key back out to you, you are ready to move on to Step 5 and la
 Once your dependencies are installed and your API key is set in the terminal session, kick off the local Python web server by running:
 
 ```bash
-python sharpshooter.py
+python launch.py
 
 ```
 
