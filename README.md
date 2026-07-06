@@ -1,6 +1,6 @@
 # 🚀 Pygame Revision App with Gemini API
 
-Welcome to our EdTech revision tool! This project was built in 24 hours for a hackathon, blending a fast-paced Pygame "shoot-and-revise" game loop with live Gemini API integration to generate dynamic learning questions on the fly.
+Welcome to our EdTech revision tool! This project was built in a 12 hour for a hackathon hosted by MLH and Leaf Pathways, blending a fast-paced Pygame "shoot-and-revise" game loop with live Gemini API integration to generate dynamic learning questions on the fly.
 
 The application launches with an interactive HTML/CSS/JS front-end landing page, which connects seamlessly to a Python backend server running locally on your machine.
 
